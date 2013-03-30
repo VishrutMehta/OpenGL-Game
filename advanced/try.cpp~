@@ -1,0 +1,988 @@
+#include <cmath>
+#include <GL/glut.h>
+#include <GL/glu.h>
+#include <fstream>
+#include <iostream>
+#include <cstring>
+#include <GL/gl.h>
+#include <cstdio>
+#include <time.h>
+#include "imageloader.h"
+//#include <soil.h>
+
+#define PI 3.141592653589
+#define DEG2RAD(deg) (deg * PI / 180)
+#define FORN(i,a,b) for (int i = (a); i <= (b); i++)
+#define FOR(i,a,b) for (int i = (a); i < (b); i++)
+#define S ({int x; scanf("%d", &x); x;})
+#define PN(x) ({printf("%d\n", x);})
+#define PS(x) ({printf("%d ", x);})
+#define NL ({printf("\n");})
+#define printarr(i, x, y) ({for(int i=0;i<y;i++){ printf("%d ", x[i]);} printf("\n");})
+#define inputarr(i, x, y) ({for(int i=0;i<y;i++){ scanf("%d", &x[i]);}})
+
+#define SIZE 10
+#define SC 1
+#define RAY 1000
+#define F 0.3
+#define STEP 0.1
+#define PHY 0.007
+#define AIR 2
+#define SCY 0.9
+#define ast_rad 0.1
+
+using namespace std;
+
+// Function Declarations
+void end_game();
+void drawSphere(double r, int lats, int longs); 
+void drawplayer();
+void update_air(int value);
+int spot(double a, double b, double c, double d, double e, double f);
+void drawsquare();
+void drawRays();
+void drawScene();
+void update_gifts(int value);
+void update(int value);
+void update_hand(int value);
+void update_rocks(int value);
+void drawBox(float len);
+void drawBall(float rad);
+void drawTriangle();
+void initRendering();
+void handleResize(int w, int h);
+void handleKeypress1(unsigned char key, int x, int y);
+void handleKeypress2(int key, int x, int y);
+void handleMouseclick(int button, int state, int x, int y);
+void drawLine(void);
+void focus();
+void drawPoints();
+// Global Variables
+bool removeflag=0, day=0;
+int camera=0, factor =0, w, h, CAM=5.0;
+float YSC=1.5, i1 = 0.8, i2=0.8, i3=0.8;
+float num = 0.0f;
+float jump_step=0.005;
+float board_angle_z=0.0, cam_inc=0.005; 
+float height, width;
+float tri_x = 0.0f;
+float tri_y = 0.0f;
+float theta = 0.0f; 
+
+GLuint loadTexture(Image* image) {
+	GLuint textureId;
+	glGenTextures(1, &textureId); //Make room for our texture
+	glBindTexture(GL_TEXTURE_2D, textureId); //Tell OpenGL which texture to edit
+	//Map the image to the texture
+	glTexImage2D(GL_TEXTURE_2D,                //Always GL_TEXTURE_2D
+			0,                            //0 for now
+			GL_RGB,                       //Format OpenGL uses for image
+			image->width, image->height,  //Width and height
+			0,                            //The border of the image
+			GL_RGB, //GL_RGB, because pixels are stored in RGB format
+			GL_UNSIGNED_BYTE, //GL_UNSIGNED_BYTE, because pixels are stored
+			//as unsigned numbers
+			image->pixels);               //The actual pixel data
+	return textureId; //Returns the id of the texture
+}
+GLuint grassTextureId, waterTextureId, treeTextureId, branchTextureId, lavaTextureId;
+class Tree
+{
+	public:
+		void drawTree(int x_coord)
+		{
+			glColor3f(139/255.0f,69/255.0f,19/255.0f);
+			glPushMatrix();
+		
+			glTranslatef(x_coord,-2,-17);
+			glRotatef(90,1,0,0);
+
+			GLUquadricObj *quadcap;
+			quadcap = gluNewQuadric();
+	
+			gluCylinder(quadcap, 0, 0.25, 1,32,32);
+			glPopMatrix();
+			
+			glColor3f(34/255.0f,139/255.0f,34/255.0f);
+			glPushMatrix();
+			glTranslatef(x_coord-0.3, -1.75, -17);
+			GLUquadric *qobj = gluNewQuadric();
+			gluQuadricTexture(qobj,GL_TRUE);
+			gluSphere(qobj,0.7,50,50);
+			glTranslatef(0.6,0,0);
+			gluSphere(qobj, 0.7, 50, 50);
+			glTranslatef(-0.3, 0.6,0);
+			gluSphere(qobj, 0.7, 50, 50);
+		//	glutSolidSphere(0.7,32,32);
+		//	glDisable(GL_TEXTURE_2D);
+			glPopMatrix();
+
+		}
+}tree1;
+class Person{
+	public:
+		bool jump, mock, jumpflag, falling, jumpcount, happy;
+		int box_x, box_y,xpos,ypos, score;
+		int facing, cur_facing;
+		float x,y,z,right_shoulder, left_shoulder, left_leg, right_leg, left_mock, right_mock;
+		float angle;
+	Person()
+	{
+		jumpcount=0;score=0;happy=0;
+		xpos=ypos=0; mock=0;
+		falling=0;
+		jump=0;
+		box_x=box_y=0;
+		x=y=z=0;
+		facing=4; cur_facing=4;
+		right_shoulder=30;
+		left_shoulder=-30;
+		right_leg=-30;
+		left_leg=30;
+		right_mock=-30;
+		left_mock=30;
+	}
+	void movement()
+	{
+		switch(facing)
+		{
+			case 1: angle=270;break;
+			case 2: angle=180; break;
+			case 3: angle=90; break;
+			case 4: angle=0;break;
+		}
+		
+	}
+	void position()
+	{
+		if( (x-4)*2 < -9)
+			falling=1;
+		if(-9 <(x-4)*2&&(x-4)*2<= -7)
+			xpos=0;
+		else if(-7 <(x-4)*2&&(x-4)*2<= -5)
+			xpos=1;
+		else if(-5 <(x-4)*2&&(x-4)*2<= -3)
+			xpos=2;
+		else if(-3 <(x-4)*2&&(x-4)*2<= -1)
+			xpos=3;
+		else if(-1 <(x-4)*2&&(x-4)*2<= 1)
+			xpos=4;
+		else if(1 <(x-4)*2&&(x-4)*2<= 3)
+			xpos=5;
+		else if(3 <(x-4)*2&&(x-4)*2<= 5)
+			xpos=6;
+		
+		else if(5 < (x-4)*2&&(x-4)*2<= 7)
+			xpos=7;
+		else
+			falling=1;
+		if( (12+2*z) < -13)
+			falling=1;
+		if(-13<(-12+2*z)&&(-12+2*z)<=-11)
+			ypos=0;
+		else if(-11 <(-12+2*z)&&(-12+2*z)<= -9)
+			ypos=1;
+		else if(-9 <(-12+2*z)&&(-12+2*z)<= -7)
+			ypos=2;
+		else if(-7 <(-12+2*z)&&(-12+2*z)<= -5)
+			ypos=3;
+		else if(-5 <(-12+2*z)&&(-12+2*z)<= -3)
+			ypos=4;
+		else if(-3 <(-12+2*z)&&(-12+2*z)<= -1)
+			ypos=5;
+		else if(-1 <(-12+2*z)&&(-12+2*z)<= 1)
+			ypos=6;
+		else if(1 <(-12+2*z)&&(-12+2*z)<= 3)
+			ypos=7;
+		else 
+			falling=1;
+
+	}
+	void drawPerson () {
+	//	printf("into drawperson\n");
+		
+		GLfloat white[] = {0.8f, 0.8f, 0.8f, 1.0f};
+		GLfloat cyan[] = {0.f, .8f, .8f, 1.f};
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, cyan);
+		glMaterialfv(GL_FRONT, GL_SPECULAR, white);
+		GLfloat shininess[] = {50};
+		glMaterialfv(GL_FRONT, GL_SHININESS, shininess);
+		glPushMatrix();
+		glTranslatef((x-4)*2,(y-1),(-12+z*2));
+		glPushMatrix();
+		
+		//person
+		//glTranslatef(F*0.0f, F*3.0f, F*-5.0f); 
+		glRotatef(angle, 0.0, 1.0, 0.0);
+		
+		glColor3f(255.0/255, 228.0/255, 181.0/255);
+		//head
+		glutSolidSphere( F*1.0, 20.0, 20.0); 
+		glColor3f(0.0, 0.0, 0.0);
+		
+		glPushMatrix();
+		glTranslatef(-0.12, 0.05, 0.3);		
+   		glBegin(GL_TRIANGLE_FAN);
+		   for(int i=0 ; i<360 ; i++) {
+       			glVertex2f(0.06 * cos(DEG2RAD(i)), 0.06 * sin(DEG2RAD(i)));
+	   		}
+   		glEnd();
+		glPopMatrix();
+		
+		glPushMatrix();
+		glTranslatef(0.12, 0.05, 0.3);		
+   		glBegin(GL_TRIANGLE_FAN);
+		   for(int i=0 ; i<360 ; i++) {
+       			glVertex2f(0.06 * cos(DEG2RAD(i)), 0.06 * sin(DEG2RAD(i)));
+	   		}
+   		glEnd();
+		glPopMatrix();
+		
+		//cap
+		glPushMatrix();
+		glTranslatef(0,F*2,0);
+		glRotatef(90,1,0,0);
+		if(mock==1)
+			glRotatef(left_mock,1,1,1);
+		GLUquadricObj *quadcap;
+		quadcap = gluNewQuadric();
+		glColor3f(1,1,0);
+		gluCylinder(quadcap, 0, 0.4, 0.5,32,32);
+		glPopMatrix();
+
+		//body
+		glPushMatrix();
+		glTranslatef(F*0.0f,F*-0.7f, F*0.0f);   
+		glRotatef(90.0f,1.0f, 0.0f, 0.0f);			
+		GLUquadricObj *quadratic;
+		quadratic = gluNewQuadric();
+		glColor3f(1.0, 0.0, 0.0);
+		gluCylinder(quadratic,F*0.5f,F*1.2f,F*2.7f,32,32);
+//		printf("right = %f left = %f\n", right_shoulder, left_shoulder);
+		glColor3f(255.0/255, 228.0/255, 181.0/255);
+		//right shoulder
+		glPushMatrix();
+		glTranslatef(F*0.0f,F*0.1f, F*0.0f);  
+		glRotatef(-60.0f,0.0f, 1.0f, 0.0f);
+		glRotatef(right_shoulder,1,0,0);
+		if(happy)
+		{
+			glRotatef(right_mock, 1,1,1);
+		}
+		
+		GLUquadricObj *quadratic1;
+		quadratic1 = gluNewQuadric();
+		gluCylinder(quadratic1,F*0.2f,F*0.2f,F*2.2f,32,32);
+		glPopMatrix();
+
+		//left shoulder
+		glPushMatrix();
+		glTranslatef(F*0.0f,F*0.1f, F*0.0f);  
+		glRotatef(60.0f,0.0f, 1.0f, 0.0f);
+		glRotatef(left_shoulder, 1,0,0);
+		if(happy)
+		{
+			glRotatef(left_mock, 1,1,1);
+		}
+		GLUquadricObj *quadratic2;
+		quadratic2 = gluNewQuadric();
+		gluCylinder(quadratic2,F*0.2f,F*0.2f,F*2.2f,32,32);
+		glPopMatrix();
+		
+	//	glColor3f(25/255,25/255,175/255);
+		glColor3f(255.0/255, 228.0/255, 181.0/255);
+		//right leg
+		glPushMatrix();
+		glTranslatef(F*0.6f,F*-0.0f, F*2.7f);  
+		glRotatef(right_leg,1.0f, 0.0f, 0.0f);
+		if(mock==1)
+			glRotatef(right_mock, 0,1,0);
+
+		GLUquadricObj *quadratic4;
+		quadratic4 = gluNewQuadric();
+		gluCylinder(quadratic4,F*0.2f,F*0.2f,F*1.5f,32,32);
+		glPopMatrix();
+
+		//left leg
+		glPushMatrix();
+		glTranslatef(F*-0.6f,F*-0.0f, F*2.7f);  
+		glRotatef(left_leg,1.0f, 0.0f, 0.0f);
+		GLUquadricObj *quadratic3;
+		if(mock==1)
+			glRotatef(left_mock, 0,1,0);
+		
+		quadratic3 = gluNewQuadric();
+		gluCylinder(quadratic3,F*0.2f,F*0.2f,F*1.5f,32,32);
+		glPopMatrix();
+		
+
+		glPopMatrix();
+		glPopMatrix();
+		glPopMatrix();
+	}
+}p1;
+class water
+{
+	public:
+	void drawWater()
+	{
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, waterTextureId);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glColor3f(1,1,1);
+		glPushMatrix();
+		glBegin(GL_QUADS);
+		glTexCoord2f(0.0f, 0.0f);
+		glVertex3f(-40, -2.9, -17);
+		glTexCoord2f(20.0f, 0.0f);
+		glVertex3f(40, -2.9, -17);
+		glTexCoord2f(20.0f, 20.0f);
+		glVertex3f(40, -2.9, 20);
+		glTexCoord2f(0.0f, 20.0f);
+		glVertex3f(-40, -2.9, 20);
+		glEnd();
+		glPopMatrix();
+		glDisable(GL_TEXTURE_2D);
+	}
+}wat;
+class floor
+{
+	public:
+	bool gift;
+	int x, y, giftx, gifty;
+	int xair[AIR], yair[AIR];
+	floor()
+	{
+		for(int i=0; i<AIR; i++)
+		{
+			xair[i]=-1; yair[i]=-1;
+		}
+		gift=0;
+		x=y=-1;
+		giftx=gifty=-1;			
+	}
+	void randomair()
+	{
+		for(int i=0; i<AIR;i++)
+		{
+			xair[i]=rand()%8;
+			yair[i]=rand()%8;
+			if(xair[i]==x && yair[i]==y)
+				xair[i]=yair[i]=-1;
+		}
+	}
+	void randomtile(){
+		x = rand()%8;
+		y= rand()%8;
+	}
+	void drawsquare()
+	{
+		glRotatef(board_angle_z*5,0,0,1);
+	//	factor=factor^1;
+		for(int j=0; j<8;j++)
+		{
+			glPushMatrix();
+//			glLineWidth(100);
+			glTranslatef(-SC*8+j*SC*2, -1.0f, -12.0f);
+			
+			//TEXTURE				
+		//	glEnable(GL_TEXTURE_2D);
+		//	glBindTexture(GL_TEXTURE_2D, grassTextureId);
+		//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+			glColor3f(1.0,1.0,1.0);			
+			//DONE TEXTURE				
+			
+			for(int i=0;i<8;i++)
+			{
+				glEnable(GL_TEXTURE_2D);
+				glBindTexture(GL_TEXTURE_2D, grassTextureId);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				if(!(i==y && j==x))
+				{
+					int flag=0;
+					for(int k=0;k<AIR;k++)
+					{
+						if(i==yair[k]&&j==xair[k])
+						{
+							glDisable(GL_TEXTURE_2D);
+							flag=1;
+							YSC=-0.2;
+							glColor3f(0.6,0.6,0.6);
+							glEnable(GL_TEXTURE_2D);
+							glBindTexture(GL_TEXTURE_2D, lavaTextureId);
+							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+						}
+					}
+				/*	if((i+j+factor) % 2)
+						glColor3f(0,0,0);
+					else
+						glColor3f(1,1,1);*/
+					glBegin(GL_QUADS);
+					glTexCoord2f(0.0f, 0.0f);
+					glVertex3f(1.0f*SC, -1.0f*YSC, 1.0f*SC);	
+					glTexCoord2f(1.0f, 0.0f);
+					glVertex3f(-1.0f*SC, -1.0f*YSC, 1.0f*SC);
+					glTexCoord2f(1.0f, 1.0f);
+					glVertex3f(-1.0f*SC, -1.0f*YSC, -1.0f*SC);
+					glTexCoord2f(0.0f, 1.0f);
+					glVertex3f(1.0f*SC, -1.0f*YSC, -1.0f*SC);
+					glEnd();
+
+				/*	if((i+j+factor) % 2)
+						glColor3f(.3,.3,.3);
+					else
+						glColor3f(.7,.7,.7);*/
+					glBegin(GL_QUADS);
+					glTexCoord2f(1.0f, 1.0f);
+					glVertex3f(1.0f*SC, -2.0f*SCY, 1.0f*SC);					
+					glTexCoord2f(0.0f, 1.0f);
+					glVertex3f(-1.0f*SC, -2.0f*SCY, 1.0f*SC);					
+					glTexCoord2f(0.0f, 0.0f);
+					glVertex3f(-1.0f*SC, -1.0f*YSC, 1.0f*SC);
+					glTexCoord2f(1.0f, 0.0f);
+					glVertex3f(1.0f*SC, -1.0f*YSC, 1.0f*SC);
+					
+					
+					glEnd();
+
+				/*	if((i+j+factor) % 2)
+						glColor3f(.3,.3,.3);
+					else
+						glColor3f(.7,.7,.7);*/
+					glBegin(GL_QUADS);
+					glTexCoord2f(0.0f, 0.0f);
+					glVertex3f(1.0f*SC, -1.0f*YSC, 1.0f*SC);
+					glTexCoord2f(1.0f, 0.0f);
+					glVertex3f(1.0f*SC, -1.0f*YSC, -1.0f*SC);
+					glTexCoord2f(1.0f, 1.0f);
+					glVertex3f(1.0f*SC, -2.0f*SCY, -1.0f*SC);
+					glTexCoord2f(0.0f, 1.0f);
+					glVertex3f(1.0f*SC, -2.0f*SCY, 1.0f*SC);
+					glEnd();
+
+				/*	if((i+j+factor) % 2)
+						glColor3f(.3,.3,.3);
+					else
+						glColor3f(.7,.7,.7); */
+					glBegin(GL_QUADS);
+					glTexCoord2f(0.0f, 0.0f);
+					glVertex3f(1*SC,-1*YSC,1*SC);
+					glTexCoord2f(1.0f, 0.0f);
+					glVertex3f(1*SC,-2*SCY,1*SC);
+					glTexCoord2f(1.0f, 1.0f);
+					glVertex3f(1*SC,-2*SCY,-1*SC);
+					glTexCoord2f(0.0f, 1.0f);
+					glVertex3f(1*SC,-1*YSC,-1*SC);
+					glEnd();
+
+				/*	if((i+j+factor) % 2)
+						glColor3f(.3,.3,.3);
+					else
+						glColor3f(.7,.7,.7); */
+					glBegin(GL_QUADS);
+					glTexCoord2f(1.0f, 1.0f);
+					glVertex3f(-1*SC,-2*SCY,-1*SC);
+					glTexCoord2f(0.0f, 1.0f);
+					glVertex3f(-1*SC,-1*YSC,-1*SC);					
+					glTexCoord2f(0.0f, 0.0f);
+					glVertex3f(-1*SC,-1*YSC,1*SC);
+					glTexCoord2f(1.0f, 0.0f);
+					glVertex3f(-1*SC,-2*SCY,1*SC);
+					
+					glEnd();
+
+				/*	if((i+j+factor) % 2)
+						glColor3f(0,0,0);
+					else
+						glColor3f(1,1,1);*/
+					glBegin(GL_QUADS);
+					glTexCoord2f(0.0f, 0.0f);
+					glVertex3f(-1*SC,-2*SCY,1*SC);
+					glTexCoord2f(1.0f, 0.0f);
+					glVertex3f(-1*SC,-2*SCY,-1*SC);
+					glTexCoord2f(1.0f, 1.0f);
+					glVertex3f(1*SC,-2*SCY,-1*SC);
+					glTexCoord2f(0.0f, 1.0f);
+					glVertex3f(1*SC,-2*SCY,1*SC);
+					glEnd();
+					if(flag)
+					{
+						flag=0;
+						YSC=1.5;
+						glColor3f(1.0f,1.0f,1.0f);
+					}
+					if(i==gifty && j==giftx)
+					{
+						glPushMatrix();
+						glTranslatef(-0.2, -1, -0.2);
+						glRotatef(90,1,0,0);
+						GLUquadricObj *quadgift;
+						quadgift = gluNewQuadric();
+						gift=gift^1;
+						glColor3f(gift^1,gift,0);
+						glDisable(GL_TEXTURE_2D);
+						gluCylinder(quadgift, 0.2, 0.4, 0.5,32,32);
+						glColor3f(1,1,1);
+						glPopMatrix();
+					}
+				}
+				glTranslatef(0.0f*SC, 0.0f*SC, 2.0f*SC);
+			}
+			glDisable(GL_TEXTURE_2D);
+			glPopMatrix();
+		}
+	}
+	
+}f;
+
+
+
+class asteroids
+{
+	public:
+	int height, rock_z;
+	asteroids()
+	{
+		height=5; 
+		rock_z=4;
+	}
+	void drawrocks()
+	{
+		glPushMatrix();
+		glColor3f(1.0f, 1.0f, 1.0f);
+		for(int i=-8; i<14; i+=2)
+		{
+			glLoadIdentity();
+			glTranslatef(i,height+(i+8)%3,rock_z);
+			glutSolidSphere(ast_rad, 20, 20);
+		}
+		glPopMatrix();
+	}
+}r;
+int main(int argc, char *argv[]) {
+    srand(time(NULL));
+    // Initialize GLUT
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    w = glutGet(GLUT_SCREEN_WIDTH);
+    h = glutGet(GLUT_SCREEN_HEIGHT);				
+    int windowWidth = width;
+    int windowHeight = height;						
+    glutInitWindowSize(w, h);
+    glutInitWindowPosition((w - windowWidth) / 2, (h - windowHeight) / 2);
+
+    glutCreateWindow("CSE251_sampleCode");  // Setup the window
+    initRendering();
+   
+    // Register callbacks
+    glutDisplayFunc(drawScene);
+    glutIdleFunc(drawScene);
+    glutKeyboardFunc(handleKeypress1);
+    glutSpecialFunc(handleKeypress2);
+    glutMouseFunc(handleMouseclick);
+    glutReshapeFunc(handleResize);
+    glutTimerFunc(10, update, 0);
+    glutTimerFunc(3000, update_gifts, 0);
+    glutTimerFunc(600, update_hand, 0);
+    glutTimerFunc(1400, update_air, 0);
+    glutTimerFunc(400, update_rocks, 0);
+    glutMainLoop();
+    return 0;
+}
+// Function to draw objects on the screen
+void drawScene() {
+
+   //Lighting
+
+    GLfloat sun_direction[] = { 0.0, 2.0, -1.0, 1.0 };
+    GLfloat sun_intensity[] = { 0.7, 0.7, 0.7, 1.0 };
+     GLfloat ambient_intensity[] = { i1, i2, i3, 1.0 };
+       // Enable coloring
+
+     glEnable(GL_LIGHTING);              // Set up ambient light.
+      glLightModelfv(GL_LIGHT_MODEL_AMBIENT, ambient_intensity);
+    
+      glEnable(GL_LIGHT0);                // Set up sunlight.
+      glLightfv(GL_LIGHT0, GL_POSITION, sun_direction);
+      glLightfv(GL_LIGHT0, GL_DIFFUSE, sun_intensity);
+    
+     glEnable(GL_COLOR_MATERIAL);        // Configure glColor().
+     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
+
+  //Done Lighting
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    wat.drawWater();
+    for(int i=-18; i<=18; i+=3)
+    {
+    	tree1.drawTree(i);
+    }
+    f.drawsquare();
+    p1.movement();
+    p1.position();
+    for(int i=0; i<AIR; i++)
+    {
+	    if(p1.xpos == f.xair[i] && p1.ypos == f.yair[i])
+	    {
+		    p1.mock=1;
+		   // printf("collision\n");
+		    switch(p1.facing)
+		    {
+			    case 1: p1.x+=1; break;
+			    case 2: p1.z+=1; break;
+			    case 3: p1.x-=1; break;
+			    case 4: p1.z-=1; break;
+		    }
+	    }
+    }
+    if(p1.xpos == f.giftx && p1.ypos == f.gifty)
+    {
+	    p1.happy=1;
+	    f.giftx = f.gifty = -1;
+	    p1.score++;
+    }
+//    printf("%d %d\n", p1.xpos, p1.ypos);
+    if(p1.xpos == f.x && p1.ypos==f.y)
+    {
+	    p1.falling=1;
+    }
+    r.drawrocks();
+    //p1.angle++;
+    p1.drawPerson();
+    glColor3f(1.0, 1.0, 1.0);
+    glShadeModel(GL_SMOOTH);
+    //drawSphere(1.0, 10, 10);
+    glutSwapBuffers();
+}
+// Function to handle all calculations in the scene
+// updated evry 10 milliseconds
+void update_rocks(int value)
+{
+	r.height--;
+	if(r.height==-5)
+		r.height=5;
+	glutTimerFunc(400, update_rocks, 0);
+}
+void update_air(int value)
+{
+	f.randomair();
+	glutTimerFunc(1400, update_air, 0);
+}
+void update_hand(int value)
+{
+	if(rand()%2 ==1)
+   		 f.randomtile();
+    glutTimerFunc(600, update_hand, 0);
+}
+void update_gifts(int value)
+{
+	/*i1 = i1+0.1;
+	if(i1 == 1)
+		i1 = 0.5;
+	i2 = i2+0.1;
+	if(i2 == 1)
+		i2 = 0.5;
+	i3 = i3+0.1;
+	if(i3 == 1)
+		i3 = 0.5;*/
+	p1.mock=0;p1.happy=0;
+  f.giftx=rand()%8; f.gifty=rand()%8;
+  glutTimerFunc(3000, update_gifts, 0);
+}
+void update(int value) {
+
+	glViewport(0,0,w,h);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluPerspective(20.0,(double)w/(double)h,1.0,200);
+	switch(camera)
+	{
+		case 0: gluLookAt( 0, 10, 30, 0,-5,-10, 0,5,0); break;
+		case 1: gluLookAt( 0, 40, 70, 0, -5, -10, 0, 1, 0); break;
+		case 2: int numx, numz, upx, upz;
+			switch(p1.facing)
+			{
+				case 1: numx=CAM; numz=0; upx=CAM; upz=0;break;
+				case 2: numz=-CAM; numx=0; upx=0; upz=-CAM;break;
+				case 3: numx=-CAM; numz=0; upx=-CAM; upz=0;break;
+				case 4: numz=CAM; numx=0; upx=0; upz=CAM;break;
+			}
+			float refx=(p1.x-4)*2, refy=p1.y, refz=p1.z*2-12;
+			gluLookAt(refx-numx, refy+5.0, refz-numz, (refx+numx), (refy-3.0),(refz+numz),0,1,0);
+			break;
+	}
+
+	board_angle_z+=cam_inc;
+	if(board_angle_z>=0.5)
+		cam_inc=-0.005;
+	if(board_angle_z<=-0.5)
+		cam_inc=0.005;
+	if(p1.falling)
+	{
+		p1.jumpcount++;
+		if(p1.jumpcount==4)
+			end_game();
+		p1.y-=0.1;
+	}
+	if(p1.jump!=1)
+	{
+		if(board_angle_z<0)
+			p1.x+=PHY;
+		else
+			p1.x-=PHY;
+	}
+	if(p1.jump==1)
+	{
+		if(p1.y<1.6 && p1.jumpflag==1)
+		{
+			jump_step=0.2;
+			p1.y+=jump_step;
+		}
+		else if((int)p1.y==1 && p1.jumpflag==1)
+		{
+			p1.jumpflag=0;
+		}
+		else if(p1.y>0.0 && p1.jumpflag == 0)
+		{
+			jump_step=-0.2;
+			p1.y+=jump_step;
+		}
+		else
+		{
+			p1.y=0;
+			p1.jump=0;
+		}
+		if(camera==0 || camera ==1)
+		{
+			switch(p1.facing)
+			{
+				case 1: p1.x-=0.09;break;
+				case 2: p1.z-=0.09;break;
+				case 3: p1.x+=0.09;break;
+				case 4: p1.z+=0.09;break;
+			}
+		}
+		else if(camera == 2)
+		{
+			switch(p1.facing)
+			{
+				case 1: p1.x+=0.09; break;
+				case 2: p1.z-=0.09; break;
+				case 3: p1.x-=0.09; break;
+				case 4: p1.z+=0.09; break;
+			}
+		}
+	}
+	if(p1.mock == 1)
+	{
+		p1.left_mock*=-1;
+		p1.right_mock*=-1;
+	}
+	if(p1.happy == 1)
+	{
+		p1.left_mock*=-1;
+		p1.right_mock*=-1;
+	}
+    glutTimerFunc(10, update, 0);
+}
+
+void drawBox(float len) {
+   
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glBegin(GL_QUADS);
+    glVertex2f(-w / 2, -h / 2);
+    glVertex2f(-w / 2, h / 2);
+    glVertex2f(w / 2, h / 2);
+    glVertex2f(w / 2, -h / 2);
+    glEnd();
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+}
+int spot(double a, double b, double c, double d, double e, double f){
+
+    /*
+
+    a, b and c -- x, y and z co-ordinates for light position
+
+    d, e and f -- x, y and z co-ordinates for spot light position
+
+    */
+    GLfloat mat_specular[] = { 0.3, 1.0, 0.3, 1.0 };
+    GLfloat mat_shininess[] = { 50.0 };
+    GLfloat light_position[] = { a,b,c, 1.0 };
+    GLfloat spotDir[] = { d,e,f };
+    glClearColor (0.5, 0.5, 0.5, 0.0);
+    glShadeModel (GL_SMOOTH);
+    glLightfv(GL_LIGHT0,GL_SPECULAR,mat_specular);
+    glLightfv(GL_LIGHT0,GL_POSITION,light_position);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
+    // Definig spotlight attributes
+    glLightf(GL_LIGHT0,GL_SPOT_CUTOFF,95.0);
+    glLightf(GL_LIGHT0,GL_SPOT_EXPONENT,2.0);
+    glLightfv(GL_LIGHT0,GL_SPOT_DIRECTION,spotDir);
+    glEnable(GL_COLOR_MATERIAL);
+    glEnable(GL_DEPTH_TEST);
+    return 0;
+
+}
+// Initializing some openGL 3D rendering options
+void initRendering() {
+   glEnable(GL_DEPTH_TEST);        // Enable objects to be drawn ahead/behind one another
+    glEnable(GL_COLOR_MATERIAL); 
+    glClearColor(0.0f, 0.0f, 1.0f, 1.0f);   // Setting a background color
+
+    	Image* image = loadBMP("skull.bmp");
+	grassTextureId = loadTexture(image);
+	Image* image1 = loadBMP("image.bmp");
+	waterTextureId = loadTexture(image1);
+	Image* image2 = loadBMP("tree.bmp");
+	treeTextureId = loadTexture(image2);
+	Image* image3 = loadBMP("branch.bmp");
+	branchTextureId = loadTexture(image3);
+	Image* image4 = loadBMP("skull.bmp");
+	lavaTextureId = loadTexture(image4);
+	delete image4;
+	delete image3;
+	delete image2;
+	delete image;
+	delete image1;
+	glShadeModel (GL_SMOOTH);
+//	tree1.drawTree();
+    
+}
+
+// Function called when the window is resized
+void handleResize(int w, int h) {
+
+glViewport(0,0,w,h);
+glMatrixMode(GL_PROJECTION);
+glLoadIdentity();
+gluPerspective(20.0,(double)w/(double)h,1.0,200);
+//gluLookAt(0.0f,0.1f, 1.5f,   0.0f,0.1f,0.0f,   0.0f,1.0f,0.5f);
+gluLookAt( 0, 10, 30,   0,-5,-10, -0.5,5,0);
+}
+
+void handleKeypress1(unsigned char key, int x, int y) {
+	
+
+    if (key == 27) {
+	printf("YOUR SCORE IS %d\n", p1.score);
+        exit(0);     // escape key is pressed
+    }
+    if(key == 'j')
+    {
+	    p1.jump=1;
+	    p1.jumpflag=1;
+    }
+    if(key == 't')
+    {
+	    day=day^1;
+	    if(day)
+		    i1=i2=i3=0.4;
+	    else
+		    i1=i2=i3=0.8;
+    }
+    if(key == 'm')
+    {
+	    p1.mock=p1.mock^1;
+    }
+    if(key == 'c')
+    {
+	    camera=(camera+1)%3;
+    }
+}
+
+void handleKeypress2(int key, int x, int y) {
+
+    p1.left_leg*=-1;
+    p1.right_leg*=-1;
+    p1.right_shoulder*=-1;
+    p1.left_shoulder*=-1;
+    if (key == GLUT_KEY_LEFT)
+    {
+	    if(camera == 2)
+	    {
+		    p1.facing=p1.facing+1;
+		    if(p1.facing==5)
+			    p1.facing=1;
+	    }
+	    else
+	    {
+	   	 p1.x-=STEP;
+	   	 p1.facing=1;
+	    }
+    }
+    if (key == GLUT_KEY_RIGHT)
+    {
+	    if(camera == 2)
+	    {
+		    p1.facing--;
+		    if(p1.facing==0)
+			    p1.facing=4;
+	    }
+	    else
+	    {
+	    	p1.x+=STEP;
+	    	p1.facing=3;
+	    }
+
+    }
+    if (key == GLUT_KEY_UP)
+    {
+	    if(camera==2)
+	    {
+		    switch(p1.facing)
+		    {
+			    case 1: p1.x+=STEP; break;
+			    case 2: p1.z-=STEP; break;
+			    case 3: p1.x-=STEP; break;
+			    case 4: p1.z+=STEP; break;
+		    }
+	    }
+	    else
+	    {
+	   	 p1.z-=STEP;
+	   	 p1.facing=2;
+	    }
+		
+    }
+    if (key == GLUT_KEY_DOWN)
+    {
+	    if(camera==2)
+	    {
+		    p1.facing+=2;
+		    if(p1.facing==5)
+			    p1.facing=1;
+		    if(p1.facing==6)
+			    p1.facing=2;
+	    }
+	    else
+	    {
+	    	p1.z+=STEP;
+	    	p1.facing=4;
+	    }
+    }
+}
+
+void handleMouseclick(int button, int state, int x, int y) {
+
+    if (state == GLUT_DOWN)
+    {
+        if (button == GLUT_LEFT_BUTTON)
+            theta += 15;
+        else if (button == GLUT_RIGHT_BUTTON)
+            theta -= 15;
+    }
+}
+void end_game()
+{
+	printf("YOU SCORE IS %d\n", p1.score);
+	exit(0);
+}

@@ -1,0 +1,9 @@
+Copy all file into a folder
+Go to that folder
+Type in "make" (quotes for clarity)
+Now type ./cse251_sampleCode <argument> to execute
+Use 'T' for Light transport, 'Z' for random walk, 'G' for gaze mode.
+Use 'C' to change highlighted object
+Use Arrow keys to move selected object
+Use 'R' or 'L' to rotate it
+Use 'F' or 'S' to make the movements faster or slower respectively
